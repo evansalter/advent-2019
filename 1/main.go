@@ -1,52 +1,11 @@
 package main
 
 import (
-	"fmt"
-	"strconv"
-
-	"github.com/evansalter/advent-2019/helpers"
+	"github.com/evansalter/advent-2019/1/part1"
+	"github.com/evansalter/advent-2019/1/part2"
 )
 
-func part1() {
-	lines := helpers.ReadInputFile(1)
-	total := 0
-	for _, l := range lines {
-		i, err := strconv.Atoi(l)
-		if err != nil {
-			fmt.Printf("Error converting %s to int: %s", l, err.Error())
-			return
-		}
-
-		f := (i / 3) - 2
-		total += f
-	}
-	fmt.Println(total)
-}
-
-func calcFuel(mass int) int {
-	f := (mass / 3) - 2
-	if f <= 0 {
-		return 0
-	}
-	return calcFuel(f) + f
-}
-
-func part2() {
-	lines := helpers.ReadInputFile(1)
-	total := 0
-	for _, l := range lines {
-		i, err := strconv.Atoi(l)
-		if err != nil {
-			fmt.Printf("Error converting %s to int: %s", l, err.Error())
-			return
-		}
-
-		total += calcFuel(i)
-	}
-	fmt.Println(total)
-}
-
 func main() {
-	part1()
-	part2()
+	part1.Run()
+	part2.Run()
 }
