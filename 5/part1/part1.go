@@ -10,6 +10,17 @@ import (
 	"github.com/evansalter/advent-2019/helpers"
 )
 
+const (
+	OpAdd      = "01"
+	OpMultiply = "02"
+	OpInput    = "03"
+	OpOutput   = "04"
+	OpHalt     = "99"
+
+	ModePosition  = "0"
+	ModeImmediate = "1"
+)
+
 func stringsToInts(strs ...string) ([]int, error) {
 	out := make([]int, len(strs))
 	var err error
@@ -25,12 +36,12 @@ func stringsToInts(strs ...string) ([]int, error) {
 func getInput(program []string, mode string, arg int) int {
 	var str string
 	switch mode {
-	case "0":
+	case ModePosition:
 		if arg >= len(program) {
 			return 0
 		}
 		str = program[arg]
-	case "1":
+	case ModeImmediate:
 		return arg
 	}
 
@@ -55,6 +66,17 @@ func inputChar() rune {
 	return char
 }
 
+func getNumToIncrement(op string) int {
+	switch op {
+	case OpAdd, OpMultiply:
+		return 4
+	case OpInput, OpOutput:
+		fallthrough
+	default:
+		return 2
+	}
+}
+
 func runProgram(program []string) []string {
 	i := 0
 	for i < len(program) {
@@ -65,7 +87,7 @@ func runProgram(program []string) []string {
 			opcode = fmt.Sprintf("0%s", opcode)
 		}
 		modes, op := opcode[:3], opcode[3:]
-		if op == "99" {
+		if op == OpHalt {
 			break
 		}
 
@@ -80,21 +102,18 @@ func runProgram(program []string) []string {
 
 		input1, input2 := getInput(program, param1Mode, args[0]), getInput(program, param2Mode, args[1])
 		switch op {
-		case "01": // Addition
+		case OpAdd:
 			program[out] = strconv.Itoa(input1 + input2)
-		case "02": // Multiplication
+		case OpMultiply:
 			program[out] = strconv.Itoa(input1 * input2)
-		case "03": // Save input
+		case OpInput:
 			char := inputChar()
 			program[input1] = string(char)
-		case "04": // Output
+		case OpOutput:
 			fmt.Println(input1)
 		}
 
-		numToIncrement := 4
-		if op == "03" || op == "04" {
-			numToIncrement = 2
-		}
+		numToIncrement := getNumToIncrement(op)
 		i += numToIncrement
 	}
 	return program
@@ -103,22 +122,5 @@ func runProgram(program []string) []string {
 func Run() {
 	input := helpers.ReadInputFile(5)[0]
 	program := strings.Split(input, ",")
-	// fmt.Println(runProgram(program))
 	runProgram(program)
-
-	// for i := 0; i <= 99; i++ {
-	// 	for j := 0; j <= 99; j++ {
-	// 		program := strings.Split(input, ",")
-
-	// 		program[1] = strconv.Itoa(i)
-	// 		program[2] = strconv.Itoa(j)
-
-	// 		program = runProgram(program)
-	// 		if program[0] == "19690720" {
-	// 			fmt.Println(100*i + j)
-	// 			return
-	// 		}
-	// 	}
-	// }
-	// fmt.Println("No answer found")
 }
