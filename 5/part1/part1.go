@@ -1,7 +1,9 @@
 package part1
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -20,53 +22,103 @@ func stringsToInts(strs ...string) ([]int, error) {
 	return out, nil
 }
 
+func getInput(program []string, mode string, arg int) int {
+	var str string
+	switch mode {
+	case "0":
+		if arg >= len(program) {
+			return 0
+		}
+		str = program[arg]
+	case "1":
+		return arg
+	}
+
+	if str == "" {
+		return 0
+	}
+	i, err := strconv.Atoi(str)
+	if err != nil {
+		panic(fmt.Sprintf("Error converting %s to int: %s", str, err.Error()))
+	}
+
+	return i
+}
+
+func inputChar() rune {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Input: ")
+	char, _, err := reader.ReadRune()
+	if err != nil {
+		panic(fmt.Sprintf("Error reading character: %s", err.Error()))
+	}
+	return char
+}
+
 func runProgram(program []string) []string {
-	for i := 0; i < len(program); i += 4 {
-		op := program[i]
+	i := 0
+	for i < len(program) {
+		opcode := program[i]
+
+		// Left-pad with zeros
+		for len(opcode) < 5 {
+			opcode = fmt.Sprintf("0%s", opcode)
+		}
+		modes, op := opcode[:3], opcode[3:]
 		if op == "99" {
 			break
 		}
+
+		param1Mode, param2Mode := modes[2:], modes[1:2]
+
 		args, err := stringsToInts(program[i+1], program[i+2], program[i+3])
 		if err != nil {
 			fmt.Printf("Error converting strings to ints: %s\n", err.Error())
 			return nil
 		}
 		out := args[2]
-		inputs, err := stringsToInts(program[args[0]], program[args[1]])
-		if err != nil {
-			fmt.Printf("Error converting strings to ints: %s\n", err.Error())
-			return nil
-		}
-		input1, input2 := inputs[0], inputs[1]
-		var result int
-		switch op {
-		case "1": // Addition
-			result = input1 + input2
-		case "2": // Multiplication
-			result = input1 * input2
 
+		input1, input2 := getInput(program, param1Mode, args[0]), getInput(program, param2Mode, args[1])
+		switch op {
+		case "01": // Addition
+			program[out] = strconv.Itoa(input1 + input2)
+		case "02": // Multiplication
+			program[out] = strconv.Itoa(input1 * input2)
+		case "03": // Save input
+			char := inputChar()
+			program[input1] = string(char)
+		case "04": // Output
+			fmt.Println(input1)
 		}
-		program[out] = strconv.Itoa(result)
+
+		numToIncrement := 4
+		if op == "03" || op == "04" {
+			numToIncrement = 2
+		}
+		i += numToIncrement
 	}
 	return program
 }
 
 func Run() {
-	input := helpers.ReadInputFile(2)[0]
+	input := helpers.ReadInputFile(5)[0]
+	program := strings.Split(input, ",")
+	// fmt.Println(runProgram(program))
+	runProgram(program)
 
-	for i := 0; i <= 99; i++ {
-		for j := 0; j <= 99; j++ {
-			program := strings.Split(input, ",")
+	// for i := 0; i <= 99; i++ {
+	// 	for j := 0; j <= 99; j++ {
+	// 		program := strings.Split(input, ",")
 
-			program[1] = strconv.Itoa(i)
-			program[2] = strconv.Itoa(j)
+	// 		program[1] = strconv.Itoa(i)
+	// 		program[2] = strconv.Itoa(j)
 
-			program = runProgram(program)
-			if program[0] == "19690720" {
-				fmt.Println(100*i + j)
-				return
-			}
-		}
-	}
-	fmt.Println("No answer found")
+	// 		program = runProgram(program)
+	// 		if program[0] == "19690720" {
+	// 			fmt.Println(100*i + j)
+	// 			return
+	// 		}
+	// 	}
+	// }
+	// fmt.Println("No answer found")
 }
