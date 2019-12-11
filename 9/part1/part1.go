@@ -9,7 +9,6 @@ import (
 
 func Run() {
 	lines := helpers.ReadInputFile(9)[0]
-	// lines := "104,1125899906842624,99"
 	input := strings.Split(lines, ",")
 
 	p := intcode.NewProgram(input)
