@@ -3,6 +3,7 @@ package intcode
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 )
@@ -16,15 +17,16 @@ const (
 type OpCode string
 
 const (
-	Add         OpCode = "01"
-	Multiply           = "02"
-	Input              = "03"
-	Output             = "04"
-	JumpIfTrue         = "05"
-	JumpIfFalse        = "06"
-	LessThan           = "07"
-	Equals             = "08"
-	Halt               = "99"
+	Add             OpCode = "01"
+	Multiply               = "02"
+	Input                  = "03"
+	Output                 = "04"
+	JumpIfTrue             = "05"
+	JumpIfFalse            = "06"
+	LessThan               = "07"
+	Equals                 = "08"
+	AdjRelativeBase        = "09"
+	Halt                   = "99"
 )
 
 // Mode represents the method in which an argument value is retrieved
@@ -41,16 +43,24 @@ const (
 
 // Program contains the instruction counter, as well as the opcode program
 type Program struct {
-	Counter int
-	Program []string
-	running bool
+	Counter      int64
+	Program      []string
+	running      bool
+	relativeBase int64
 }
 
 // NewProgram initializes a program with the given opcode slice
 func NewProgram(p []string) *Program {
+	mem := make([]string, math.MaxInt16)
+	for i := range mem {
+		mem[i] = "0"
+	}
+	for i, x := range p {
+		mem[i] = x
+	}
 	return &Program{
 		Counter: 0,
-		Program: p,
+		Program: mem,
 		running: true,
 	}
 }
@@ -71,22 +81,27 @@ func (p *Program) Halt() {
 
 // HasMore returns true if there are more instructions to execute, false otherwise
 func (p *Program) HasMore() bool {
-	return p.Counter < len(p.Program)-1 && p.running
+	return p.Counter < int64(len(p.Program)-1) && p.running
 }
 
 // IncrCounter increments the program counter by n
-func (p *Program) IncrCounter(n int) {
+func (p *Program) IncrCounter(n int64) {
 	p.Counter += n
 }
 
 // SetStringValue sets the value at the given position
-func (p *Program) SetStringValue(pos int, val string) {
+func (p *Program) SetStringValue(pos int64, val string) {
 	p.Program[pos] = val
 }
 
 // SetIntValue sets the value at the given position, after converting it to a string
-func (p *Program) SetIntValue(pos, val int) {
-	p.SetStringValue(pos, strconv.Itoa(val))
+func (p *Program) SetIntValue(pos, val int64) {
+	p.SetStringValue(pos, int64ToString(val))
+}
+
+// IncrRelativeBase adds x to the current relative base
+func (p *Program) IncrRelativeBase(x int64) {
+	p.relativeBase += x
 }
 
 // GetNextCommand returns the next command to be executed
@@ -119,6 +134,8 @@ func (p *Program) GetNextCommand() Command {
 		return NewLessThanCommand(p)
 	case Equals:
 		return NewEqualsCommand(p)
+	case AdjRelativeBase:
+		return NewAdjRelativeBaseCommand(p)
 	default:
 		panic(fmt.Sprintf("Unexpected command: %s", op))
 	}
@@ -136,16 +153,13 @@ func (p *Program) GetNArguments(n int) []*Argument {
 		opcode = fmt.Sprintf("0%s", opcode)
 	}
 	modeStr := opcode[:3]
-	mode1, mode2 := modeStr[2:], modeStr[1:2]
-	modes := []Mode{Mode(mode1), Mode(mode2), Position}
+	mode1, mode2, mode3 := modeStr[2:], modeStr[1:2], modeStr[:1]
+	modes := []Mode{Mode(mode1), Mode(mode2), Mode(mode3)}
 
 	args := make([]*Argument, n)
 	for i := 0; i < len(args); i++ {
-		idx := p.Counter + i + 1
-		val, err := strconv.Atoi(p.Program[idx])
-		if err != nil {
-			panic(fmt.Sprintf("Error converting %s to int: %s", p.Program[idx], err.Error()))
-		}
+		idx := p.Counter + int64(i+1)
+		val := parseInt64(p.Program[idx])
 		args[i] = NewArgument(modes[i], val)
 	}
 
@@ -155,38 +169,48 @@ func (p *Program) GetNArguments(n int) []*Argument {
 // Argument is a parameter to a command, containing a mode and a value
 type Argument struct {
 	Mode Mode
-	Val  int
+	Val  int64
 }
 
 // NewArgument returns a new argument with the given mode and value
-func NewArgument(mode Mode, val int) *Argument {
+func NewArgument(mode Mode, val int64) *Argument {
 	return &Argument{
 		Mode: mode,
 		Val:  val,
 	}
 }
 
+// GetOutputAddress calculates the correct address for an output argument
+func (a *Argument) GetOutputAddress(p *Program) int64 {
+	switch a.Mode {
+	case Position:
+		return a.Val
+	case Relative:
+		return p.relativeBase + a.Val
+	}
+	panic(fmt.Sprintf("Got invalid mode for output: %v", a.Mode))
+}
+
 // GetValue looks up the argument in the program, using the correct mode
-func (a *Argument) GetValue(p *Program) int {
+func (a *Argument) GetValue(p *Program) int64 {
 	var str string
 	switch a.Mode {
 	case Position:
-		if a.Val >= len(p.Program) {
+		if a.Val >= int64(len(p.Program)) {
 			fmt.Printf("Value %d is greater then length of program %d\n", a.Val, len(p.Program))
 			return 0
 		}
 		str = p.Program[a.Val]
 	case Immediate:
 		return a.Val
+	case Relative:
+		str = p.Program[p.relativeBase+a.Val]
 	}
 
 	if str == "" {
 		return 0
 	}
-	i, err := strconv.Atoi(str)
-	if err != nil {
-		panic(fmt.Sprintf("Error converting %s to int: %s", str, err.Error()))
-	}
+	i := parseInt64(str)
 
 	return i
 }
@@ -218,7 +242,7 @@ func NewAddCommand(p *Program) *AddCommand {
 
 // Execute runs the command
 func (c *AddCommand) Execute() {
-	c.program.SetIntValue(c.output.Val, c.arg1.GetValue(c.program)+c.arg2.GetValue(c.program))
+	c.program.SetIntValue(c.output.GetOutputAddress(c.program), c.arg1.GetValue(c.program)+c.arg2.GetValue(c.program))
 }
 
 // IncrementCounter moves the program counter the correct number of places
@@ -247,7 +271,7 @@ func NewMultiplyCommand(p *Program) *MultiplyCommand {
 
 // Execute runs the command
 func (c *MultiplyCommand) Execute() {
-	c.program.SetIntValue(c.output.Val, c.arg1.GetValue(c.program)*c.arg2.GetValue(c.program))
+	c.program.SetIntValue(c.output.GetOutputAddress(c.program), c.arg1.GetValue(c.program)*c.arg2.GetValue(c.program))
 }
 
 // IncrementCounter moves the program counter the correct number of places
@@ -278,7 +302,7 @@ func (c *InputCommand) Execute() {
 	if err != nil {
 		panic(fmt.Sprintf("Error reading character: %s", err.Error()))
 	}
-	c.program.SetStringValue(c.output.Val, string(char))
+	c.program.SetStringValue(c.output.GetOutputAddress(c.program), string(char))
 }
 
 // IncrementCounter moves the program counter the correct number of places
@@ -303,7 +327,7 @@ func NewOutputCommand(p *Program) *OutputCommand {
 
 // Execute runs the command
 func (c *OutputCommand) Execute() {
-	fmt.Println(c.program.Program[c.field.Val])
+	fmt.Println(c.field.GetValue(c.program))
 }
 
 // IncrementCounter moves the program counter the correct number of places
@@ -404,7 +428,7 @@ func (c *LessThanCommand) Execute() {
 	if c.arg1.GetValue(c.program) < c.arg2.GetValue(c.program) {
 		out = 1
 	}
-	c.program.SetIntValue(c.output.Val, out)
+	c.program.SetIntValue(c.output.GetOutputAddress(c.program), int64(out))
 }
 
 // IncrementCounter moves the program counter the correct number of places
@@ -437,12 +461,37 @@ func (c *EqualsCommand) Execute() {
 	if c.arg1.GetValue(c.program) == c.arg2.GetValue(c.program) {
 		out = 1
 	}
-	c.program.SetIntValue(c.output.Val, out)
+	c.program.SetIntValue(c.output.GetOutputAddress(c.program), int64(out))
 }
 
 // IncrementCounter moves the program counter the correct number of places
 func (c *EqualsCommand) IncrementCounter() {
 	c.program.IncrCounter(4)
+}
+
+// AdjRelativeBaseCommand adjusts the relative base to the value provided
+type AdjRelativeBaseCommand struct {
+	program *Program
+	arg1    *Argument
+}
+
+// NewAdjRelativeBaseCommand returns a new instance of AdjRelativeBaseCommand
+func NewAdjRelativeBaseCommand(p *Program) *AdjRelativeBaseCommand {
+	args := p.GetNArguments(1)
+	return &AdjRelativeBaseCommand{
+		program: p,
+		arg1:    args[0],
+	}
+}
+
+// Execute runs the command
+func (c *AdjRelativeBaseCommand) Execute() {
+	c.program.IncrRelativeBase(c.arg1.GetValue(c.program))
+}
+
+// IncrementCounter moves the program counter the correct number of places
+func (c *AdjRelativeBaseCommand) IncrementCounter() {
+	c.program.IncrCounter(2)
 }
 
 // HaltCommand halts the running program
@@ -465,4 +514,16 @@ func (c *HaltCommand) Execute() {
 // IncrementCounter moves the program counter the correct number of places
 func (c *HaltCommand) IncrementCounter() {
 	return
+}
+
+func parseInt64(str string) int64 {
+	i, err := strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("Error parsing %s as int: %s", str, err.Error()))
+	}
+	return i
+}
+
+func int64ToString(i int64) string {
+	return strconv.FormatInt(i, 10)
 }
