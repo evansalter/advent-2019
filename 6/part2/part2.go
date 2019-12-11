@@ -9,8 +9,9 @@ import (
 )
 
 type Node struct {
-	Name  string
-	Nodes []*Node
+	Name   string
+	Parent *Node
+	Nodes  []*Node
 }
 
 type Orbit struct {
@@ -38,7 +39,10 @@ func parseInput(input []string) []*Orbit {
 func makeTree(root *Node, orbits []*Orbit) *Node {
 	for _, o := range orbits {
 		if o.Planet == root.Name {
-			n := &Node{Name: o.Moon}
+			n := &Node{
+				Name:   o.Moon,
+				Parent: root,
+			}
 			root.Nodes = append(root.Nodes, n)
 			makeTree(n, orbits)
 		}
@@ -46,12 +50,49 @@ func makeTree(root *Node, orbits []*Orbit) *Node {
 	return root
 }
 
-func countNodes(depth int, root *Node) int {
-	sum := depth
-	for _, n := range root.Nodes {
-		sum += countNodes(depth+1, n)
+func findNode(root *Node, name string) *Node {
+	if root.Name == name {
+		return root
 	}
-	return sum
+	for _, n := range root.Nodes {
+		if foundNode := findNode(n, name); foundNode != nil {
+			return foundNode
+		}
+	}
+	return nil
+}
+
+func findShortestPath(paths [][]*Node) []*Node {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	sort.Slice(paths, func(i, j int) bool {
+		return len(paths[i]) < len(paths[j])
+	})
+	return paths[0]
+}
+
+func findPathsToNode(start *Node, target string, path []*Node) [][]*Node {
+	if start.Name == target {
+		return [][]*Node{append(path, start)}
+	}
+	foundPaths := make([][]*Node, 0)
+	for _, n := range start.Nodes {
+		foundPath := findPathsToNode(n, target, append(path, start))
+		foundPaths = append(foundPaths, foundPath...)
+	}
+
+	return foundPaths
+}
+
+func FindPathsToNode(start *Node, target string, path []*Node) [][]*Node {
+	foundPaths := findPathsToNode(start, target, path)
+	if start.Parent != nil {
+		foundPath := FindPathsToNode(start.Parent, target, append(path, start))
+		foundPaths = append(foundPaths, foundPath...)
+	}
+	return foundPaths
 }
 
 func Run() {
@@ -60,6 +101,8 @@ func Run() {
 
 	root := &Node{Name: "COM"}
 	tree := makeTree(root, input)
-	numOrbits := countNodes(0, tree)
-	fmt.Println(numOrbits)
+	you := findNode(tree, "YOU")
+	paths := FindPathsToNode(you, "SAN", make([]*Node, 0))
+	shortest := findShortestPath(paths)
+	fmt.Println(len(shortest) - 3) // Subtract 3 to get rid of YOU, SAN and origin orbit
 }
