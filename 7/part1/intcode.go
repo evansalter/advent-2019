@@ -1,9 +1,7 @@
 package part1
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strconv"
 )
 
@@ -42,14 +40,18 @@ type Program struct {
 	Counter int
 	Program []string
 	running bool
+	inChan  chan int
+	outChan chan int
 }
 
 // NewProgram initializes a program with the given opcode slice
-func NewProgram(p []string) *Program {
+func NewProgram(p []string, inChan, outChan chan int) *Program {
 	return &Program{
 		Counter: 0,
 		Program: p,
 		running: true,
+		inChan:  inChan,
+		outChan: outChan,
 	}
 }
 
@@ -106,9 +108,9 @@ func (p *Program) GetNextCommand() Command {
 	case Multiply:
 		return NewMultiplyCommand(p)
 	case Input:
-		return NewInputCommand(p)
+		return NewInputCommand(p, p.inChan)
 	case Output:
-		return NewOutputCommand(p)
+		return NewOutputCommand(p, p.outChan)
 	case JumpIfTrue:
 		return NewJumpIfTrueCommand(p)
 	case JumpIfFalse:
@@ -257,26 +259,22 @@ func (c *MultiplyCommand) IncrementCounter() {
 type InputCommand struct {
 	program *Program
 	output  *Argument
+	inChan  chan int
 }
 
 // NewInputCommand returns an instance of InputCommand
-func NewInputCommand(p *Program) *InputCommand {
+func NewInputCommand(p *Program, inChan chan int) *InputCommand {
 	args := p.GetNArguments(1)
 	return &InputCommand{
 		program: p,
 		output:  args[0],
+		inChan:  inChan,
 	}
 }
 
 // Execute runs the command
 func (c *InputCommand) Execute() {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Input: ")
-	char, _, err := reader.ReadRune()
-	if err != nil {
-		panic(fmt.Sprintf("Error reading character: %s", err.Error()))
-	}
-	c.program.SetStringValue(c.output.Val, string(char))
+	c.program.SetIntValue(c.output.Val, <-c.inChan)
 }
 
 // IncrementCounter moves the program counter the correct number of places
@@ -288,20 +286,27 @@ func (c *InputCommand) IncrementCounter() {
 type OutputCommand struct {
 	program *Program
 	field   *Argument
+	outChan chan int
 }
 
 // NewOutputCommand returns a new instance of OutputCommand
-func NewOutputCommand(p *Program) *OutputCommand {
+func NewOutputCommand(p *Program, outChan chan int) *OutputCommand {
 	args := p.GetNArguments(1)
 	return &OutputCommand{
 		program: p,
 		field:   args[0],
+		outChan: outChan,
 	}
 }
 
 // Execute runs the command
 func (c *OutputCommand) Execute() {
-	fmt.Println(c.program.Program[c.field.Val])
+	str := c.program.Program[c.field.Val]
+	i, err := strconv.Atoi(str)
+	if err != nil {
+		panic(fmt.Sprintf("Error converting %s to int: %s", str, err.Error()))
+	}
+	c.outChan <- i
 }
 
 // IncrementCounter moves the program counter the correct number of places
