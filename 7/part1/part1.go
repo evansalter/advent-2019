@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/evansalter/advent-2019/7/intcode"
 	"github.com/evansalter/advent-2019/helpers"
 )
 
@@ -58,7 +59,7 @@ func Run() {
 		inChan, outChan := make(chan int), make(chan int)
 
 		for _, phase := range phases {
-			p := NewProgram(input, inChan, outChan)
+			p := intcode.NewProgram(input, inChan, outChan)
 			go p.Run()
 
 			inChan <- phase

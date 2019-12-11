@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/evansalter/advent-2019/7/intcode"
 	"github.com/evansalter/advent-2019/helpers"
 )
 
@@ -74,7 +75,7 @@ func Run() {
 		for i := range phases {
 			wg.Add(1)
 			go func(i int) {
-				p := NewProgram(copyStringSlice(input), inChans[i], outChans[i])
+				p := intcode.NewProgram(copyStringSlice(input), inChans[i], outChans[i])
 				p.Run()
 				wg.Done()
 			}(i)
